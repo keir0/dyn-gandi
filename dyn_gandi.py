@@ -134,8 +134,19 @@ def livedns_handle(domain, ip, records):
 
     # update DNS records
     for rec in records:
+        r_update = None
+        updated_value = ip
         try:
-            r_update = ldns.put_domain_record(domain=domain, record_name=rec['name'], record_type=rec['type'], value=ip, ttl=int(config['dns']['ttl']))
+            if rec['type'] == "TXT":
+                # Get TXT record remote value
+                r_value = ldns.get_domain_record(domain, record_name=rec['name'], record_type=rec['type'])
+                if not r_value or not r_value.get('values', []):
+                    raise RuntimeWarning("TXT record '%s' not found. Can't proceed with update" % rec['name'])
+
+                # Generate new value
+                updated_value= r_value['values'][0].replace(dns_ip, ip)
+
+            r_update = ldns.put_domain_record(domain=domain, record_name=rec['name'], record_type=rec['type'], value=updated_value, ttl=int(config['dns']['ttl']))
         except Exception as e:
             print(
                 "%s, Error: %s. Backup snapshot id: %s."
@@ -242,6 +253,9 @@ def main():
     records = []
     for rec in config['dns']['records'].split(","):
         records.append({"type": "A", "name": rec})
+
+    for rec in config['dns']['txt_records'].split(","):
+        records.append({"type": "TXT", "name": rec})
 
     if not records:
         raise RuntimeWarning("No records to update, check configuration.")
